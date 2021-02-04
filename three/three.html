@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Prueba 3D</title>
+<script type="text/javascript" src="../js/jquery-latest.min.js"></script>
+<script type="text/javascript" src="../js/gsap.min.js"></script>
+<style>
+    html,
+    body
+    {
+        background-color: transparent;
+        overflow: hidden;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: "Gotham";
+        color:#FFF;
+    }
+    
+    *,
+    *:before,
+    *:after
+    {
+        box-sizing: inherit;
+    }
+
+    #mainlayout
+    {
+        display:none;
+    }
+    
+</style>
+</head>
+<body>
+    <div id="mainlayout">
+        <div id="container">
+        </div>
+    </div>
+    <script type="text/javascript" src="../js/helpers.js"></script>
+    <script type="text/javascript" src="../js/three.min.js"></script>
+    <script type="text/javascript" src="../js/opentype.min.js"></script>
+    <script>
+
+
+        let urls = ["negx.jpg", "negy.jpg", "negz.jpg", "posx.jpg", "posy.jpg", "posz.jpg"];
+        let mreflection = new THREE.CubeTextureLoader().setPath( "reflex/" ).load(urls);
+
+        var material_props = 
+        {
+            color: "#666666",
+            emissive: "#000000",
+            roughness: .2,
+            metalness: 1,
+            morphTargets:true,
+            envMap: mreflection,
+            envMapIntensity: 1.5
+        };
+
+        var textmat1_props =
+        {
+            color:"#88ee03",
+            transparent:true,
+            opacity:1
+        };
+
+        var textmat2_props =
+        {
+            color:"#111111",
+            transparent:true,
+            opacity:1
+        };
+
+        var shape_props = 
+        {
+            width: 1400,
+            height: 100,
+            radius: 20,
+            margin: 15
+        }
+
+        let text_value = "";
+        var loader = new THREE.FontLoader();
+        var font;
+
+        var text;
+        var textlines = [];
+        var lines = [];
+        var pgeom;
+        var ptext;
+        var rockX;
+        var rockY;
+        var textzoom;
+        var intro;
+        var outro;
+        var textwidth;
+        var init = false;
+
+        function play()
+        {
+            if(!init)
+            {
+                playAfterLoad = true;
+                return;
+            }
+            if(preview_mode) return;
+            if(intro) intro.kill();
+            lightsweep.play();
+            sweep2.play();
+            intro = new gsap.timeline({repeat:0,delay:0.5, onComplete: enableRocking})
+                .from(zocalo.position,{z:"+=300",y:"-=200",duration:1,ease:"power3.out"},"intro")
+                .from(zocalo.rotation,{x:"-=1.5",duration:1,ease:"power3.out"},"intro");
+        }
+
+        function stop()
+        {
+            outro = new gsap.timeline({repeat:0,delay:0})
+                .to(zocalo.position,{z:"+=300",y:"-=400",duration:.6,ease:"power3.in"},"outro")
+                .to(zocalo.rotation,{x:"+="+Math.PI,duration:.6,ease:"power3.in"},"outro");
+        }
+
+        function setupZocalo(f = null)
+        {
+            if(f!=null) font = f
+            setText();
+            drawRectangle(textwidth+20,shape_props.height,shape_props.radius);
+            zcube.position.y = -shape_props.height/2;
+            zocalo.add(zcube);
+            render();
+            if(!init)
+            {
+                init =  true;
+                if(playAfterLoad) play();
+            }
+        }
+        
+        function enableRocking()
+        {
+            zocalo.rotation.x = 0;
+            zocalo.rotation.y = 0;
+            rockY = new gsap.timeline({repeat:-1,delay:0,yoyo:false})
+            .to(zocalo.rotation,{y:"+=.05",duration:7,ease:"power1.inOut"},"rock")
+            .to(zocalo.rotation,{y:"-=.05",duration:7,ease:"power1.inOut"},"back")
+            rockX = new gsap.timeline({repeat:-1,delay:0,yoyo:false})
+            .to(zocalo.rotation,{x:"-=.1",duration:5,ease:"power1.inOut"},"rock")
+            .to(zocalo.rotation,{x:"+=.1",duration:5,ease:"power1.inOut"},"back")
+        }
+
+        function disableRocking()
+        {
+            rockX.kill();
+            rockY.kill();
+        }
+
+        function setText()
+        {
+            var tmg = shape_props.margin;
+            var obj = zocalo.getObjectByName("ztext");
+            if(obj)
+            {
+                obj.name = "pztext";
+                if(preview_mode || fcu)
+                {
+                    disposeText(obj)
+                }
+                else
+                {
+                    disableRocking();
+                    gsap.to(obj.position,{z:"+=100", duration:.6, ease:"power3.in",onComplete:disposeText,onCompleteParams:obj});
+                    gsap.to(obj.material,{opacity:0, duration:.4,delay:0, ease:"power3.in"});
+                    gsap.to(zocalo.rotation,{x:Math.PI*2,y:0,duration:1.2, delay:0,ease:"expo.inOut",onComplete:enableRocking});
+                }
+
+            }
+            if(pgeom)
+            {
+                pgeom.dispose();
+            }
+            var geometry = new THREE.TextBufferGeometry( text_value.toUpperCase(),
+            {
+                font: font,
+                size: shape_props.height-tmg*2.1,
+                height: 10,
+                curveSegments: 5,
+                bevelEnabled: true,
+                bevelThickness: 3,
+                bevelSize: 2,
+                bevelOffset: 0,
+                bevelSegments: 5
+            } );
+            pgeom = geometry;
+            geometry.computeBoundingBox();
+			geometry.computeVertexNormals();
+            textwidth = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+            var material1 = new THREE.MeshLambertMaterial(textmat1_props);
+            var material2 = new THREE.MeshLambertMaterial(textmat2_props);
+            text = new THREE.Mesh( geometry, [material1,material2] ) ;
+            text.name = "ztext";
+            text.material.opacity = 0;
+            text.position.z = 14;
+            text.position.x = tmg;
+            text.position.y = tmg-(shape_props.height/2);
+            if(textwidth+(tmg*2)>maxw)
+            {
+                text.scale.x = (maxw-tmg*2)/textwidth;
+            }
+            else
+            {
+                text.scale.x = 1;
+            }
+            
+            zocalo.add(text);
+            if(obj)
+            {
+                if(preview_mode || fcu)
+                {
+                    zstatus.zsize = getZSize(textwidth);
+                    setZSize();
+                }
+                else
+                {
+                    gsap.from(text.position,{z:"+=100", duration:1, delay:.5, ease:"power3.out"});
+                    gsap.fromTo(text.material,{opacity:0}, {opacity:1, duration:1, delay:.5, ease:"power2.out"});
+                    gsap.to(zstatus,1,{zsize:getZSize(textwidth),ease:"power3.inOut",onUpdate:setZSize});
+                }
+            }
+        }
+
+        function disposeText(obj)
+        {
+            var tgt = zocalo.getObjectByName("pztext");
+            zocalo.remove(tgt);
+        }
+
+
+        var zstatus = {
+            zsize:0
+        };
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,0.1,10000);
+        camera.position.z = 800;
+        var light = new THREE.AmbientLight(0x999999,1);
+        var direc = new THREE.DirectionalLight(0xffffff,.3);
+        var point = new THREE.SpotLight(0x22ff00,10,2000,1.5,1, 2);
+        var sweep = new THREE.SpotLight(0xffffff,.7,2000,1.5,1, 2);
+        var renderer = new THREE.WebGLRenderer({alpha:true,antialias: true});
+        renderer.setSize(window.innerWidth,window.innerHeight);
+        $('body').append(renderer.domElement);
+        
+        function getZSize(s)
+        {
+            var ts = s+shape_props.margin*2;
+            var r = shape_props.radius;
+            var min = r*2+1;
+            var t = (ts-min)/(maxw-min);
+            if(ts<min) return 0
+            if(ts>maxw) return 1;
+            return t;
+        }
+
+        function setZSize()
+        {
+            zcube.morphTargetInfluences[0] = zstatus.zsize;
+        }
+
+        var extrudeSettings = {
+            steps: 1,
+            depth: 0,
+            bevelEnabled: true,
+            bevelThickness: 10,//10
+            bevelSize: 10,
+            bevelOffset: 0,
+            bevelSegments: 40,
+            morphTargets:true
+        };
+
+        var zshape,zgeom,zmat,zcube, zmorph, mgeom;
+        var maxw = 1600;
+
+        function drawRectangle(w = 200,h = 60,r = 10, up=false)
+        {
+            zminshape = new THREE.Shape();
+            zminshape.moveTo(0,r);
+            zminshape.quadraticCurveTo(0,0,r,0);
+            zminshape.lineTo(r+1,0);
+            zminshape.quadraticCurveTo(r*2+1,0,r*2+1,r);
+            zminshape.lineTo(r*2+1,h-r);
+            zminshape.quadraticCurveTo(r*2+1,h,r+1,h);
+            zminshape.lineTo(r,h);
+            zminshape.quadraticCurveTo(0,h,0,h-r);
+            
+            zshape = new THREE.Shape();
+            zshape.moveTo(0,r);
+            zshape.quadraticCurveTo(0,0,r,0);
+            zshape.lineTo(maxw-r,0);
+            zshape.quadraticCurveTo(maxw,0,maxw,r);
+            zshape.lineTo(maxw,h-r);
+            zshape.quadraticCurveTo(maxw,h,maxw-r,h);
+            zshape.lineTo(r,h);
+            zshape.quadraticCurveTo(0,h,0,h-r);
+            
+            zhshape = new THREE.Shape();
+            zhshape.moveTo(0,r);
+            zhshape.quadraticCurveTo(0,0,r,0);
+            zhshape.lineTo(maxw-r,0);
+            zhshape.quadraticCurveTo(maxw,0,maxw,r);
+            zhshape.lineTo(maxw,h-r);
+            zhshape.quadraticCurveTo(maxw,h,maxw-r,h);
+            zhshape.lineTo(r,h);
+            zhshape.quadraticCurveTo(0,h,0,h-r);
+
+            zgeom = new THREE.ExtrudeBufferGeometry(zminshape, extrudeSettings );
+            mgeom = new THREE.ExtrudeBufferGeometry(zshape, extrudeSettings );
+            hgeom = new THREE.ExtrudeBufferGeometry(zhshape, extrudeSettings );
+            zgeom.morphAttributes.position = [];
+            zgeom.morphAttributes.position[0] = new THREE.Float32BufferAttribute(mgeom.attributes.position.array,3);
+
+
+            zmat = new THREE.MeshStandardMaterial(material_props);
+            zcube = new THREE.Mesh( zgeom, zmat);
+            zstatus.zsize = getZSize(textwidth);
+            setZSize();
+
+            zcube.name = "zcube";
+        }
+
+        scene.add(light);
+        scene.add(direc);
+        scene.add(point);
+        scene.add(point.target);
+        scene.add(sweep);
+        scene.add(sweep.target);
+
+        point.target.position.z = -400;
+        point.target.position.y = -100;
+        point.position.y = 200;
+        sweep.target.position.z = -700;
+        sweep.target.position.y = 0;
+        sweep.position.y = -800;
+        sweep.position.z = -600;
+        direc.position.y = .1;
+        direc.position.z = .5;
+
+
+        var zocalo = new THREE.Group();
+        zocalo.position.z = -702;
+        zocalo.position.x = -800;
+        zocalo.position.y = -400;
+        zocalo.rotation.x = 0;
+        zocalo.rotation.y = 0;
+
+        scene.add(zocalo);
+        
+
+        var lightsweep = new gsap.timeline({repeat:-1,repeatDelay:0,paused:true})
+        .fromTo(point.position, {x:-2000},{duration:13,x:2000,ease:"none"},"st")
+        .fromTo(point,{intensity:0},{duration:2,intensity:10},"st")
+        .fromTo(point,{intensity:10},{duration:2,intensity:0},"-=2");
+
+        var sweep2 = new gsap.timeline({repeat:-1,repeatDelay:0,yoyo:true,paused:true})
+        .fromTo(sweep.position, {x:-1300},{duration:20,x:1300,ease:"power1.inOut"});
+        
+        function render()
+        {
+            renderer.render(scene,camera);
+            requestAnimationFrame(render);
+        }
+
+
+        let cont = document.querySelector("#container");
+
+        function update(data)
+        {
+            var zcolor_changed = false;
+            fcu = false;
+            getData(data);
+            for (let i in Object.keys(jsdata))
+            {
+                var _param = Object.keys(jsdata)[i];
+                var _value = Object.values(jsdata)[i];
+                checkTemplateParam(_param,_value,lout,cont);
+
+                switch(_param)
+                {
+                    case "text":
+                        text_value = _value;
+                        break;
+                    case "text_color":
+                        textmat1_props.color = getColor(_value);
+                        break;
+                    case "bg_color":
+                        if(material_props.color != getColor(_value))
+                        {
+                            material_props.color = getColor(_value);
+                        }
+                        break;
+                }
+            }
+            if(preview_mode)
+            {
+            }
+            
+            if(!init)
+            {
+                loader.load('Oswald_Bold.json', setupZocalo);
+            }
+            else
+            {
+                setText();
+            }
+        }
+
+
+    </script>
+</body>
+</html>
